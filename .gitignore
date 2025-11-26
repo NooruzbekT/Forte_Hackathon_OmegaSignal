@@ -1,0 +1,78 @@
+############################
+# OS SYSTEM FILES
+############################
+.DS_Store
+Thumbs.db
+
+############################
+# PYTHON
+############################
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+*.so
+*.egg-info/
+*.egg
+build/
+dist/
+*.spec
+
+############################
+# VENV & ENV SETTINGS
+############################
+venv/
+env/
+.env
+*.env
+.venv/
+pythonenv*
+Pipfile.lock
+
+############################
+# DJANGO / FASTAPI / FLASK
+############################
+db.sqlite3
+media/
+staticfiles/
+*.log
+*.pot
+
+############################
+# NODE / JAVASCRIPT
+############################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.parcel-cache/
+
+############################
+# REACT / VUE / FRONTEND
+############################
+dist/
+build/
+.cache/
+.vite/
+*.local
+*.map
+
+############################
+# IDE / EDITORS
+############################
+.vscode/
+.idea/
+*.code-workspace
+
+############################
+# OTHERS
+############################
+*.bak
+*.tmp
+*.swp
+*.swo
+*.orig
+coverage/
