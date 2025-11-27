@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 30px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin: 0 0 20px 0;
+        }
+        #status {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: bold;
+            text-align: center;
+        }
+        .connected { background: #d4edda; color: #155724; }
+        .disconnected { background: #f8d7da; color: #721c24; }
+
+        #chat {
+            border: 2px solid #ddd;
+            height: 400px;
+            overflow-y: auto;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .message {
+            margin: 10px 0;
+            padding: 12px;
+            border-radius: 8px;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .user {
+            background: #e3f2fd;
+            margin-left: 20%;
+            border-left: 4px solid #2196F3;
+        }
+        .assistant {
+            background: #e8f5e9;
+            margin-right: 20%;
+            border-left: 4px solid #4CAF50;
+        }
+        .system {
+            background: #fff9c4;
+            text-align: center;
+            font-size: 0.9em;
+            color: #666;
+            border-left: 4px solid #FFC107;
+        }
+        .typing {
+            background: #f0f0f0;
+            padding: 10px;
+            border-radius: 8px;
+            display: inline-block;
+        }
+        .typing::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .progress {
+            background: #e0e0e0;
+            height: 35px;
+            border-radius: 18px;
+            overflow: hidden;
+            margin: 20px 0;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .progress-bar {
+            background: linear-gradient(90deg, #4CAF50, #8BC34A);
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        .input-area {
+            display: flex;
+            gap: 10px;
+        }
+        input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 15px;
+            transition: border-color 0.3s;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 15px;
+            transition: transform 0.2s;
+        }
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .info {
+            background: #f5f5f5;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .document {
+            margin-top: 20px;
+            padding: 20px;
+            background: #e8f5e9;
+            border-radius: 8px;
+            border: 2px solid #4CAF50;
+            display: none;
+        }
+        .download-btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+        .download-btn:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 AI Business Analyst - WebSocket Test</h1>
+
+        <div id="status" class="disconnected">
+            ⚫ Подключение...
+        </div>
+
+        <div class="info">
+            <strong>Session ID:</strong> <span id="sessionId">-</span><br>
+            <strong>WebSocket:</strong> <span id="wsUrl">-</span>
+        </div>
+
+        <div class="progress">
+            <div id="progressBar" class="progress-bar">0%</div>
+        </div>
+
+        <div id="chat"></div>
+
+        <div class="input-area">
+            <input
+                id="input"
+                type="text"
+                placeholder="Напишите сообщение (Enter для отправки)..."
+                disabled
+            />
+            <button id="sendBtn" disabled>📤 Отправить</button>
+        </div>
+
+        <div id="documentDiv" class="document">
+            <h3>🎉 Документ готов!</h3>
+            <div id="documentLink"></div>
+        </div>
+    </div>
+
+    <script>
+        const sessionId = 'test-' + Date.now();
+        const wsUrl = `ws://localhost:8000/ws/chat/${sessionId}`;
+
+        document.getElementById('sessionId').textContent = sessionId;
+        document.getElementById('wsUrl').textContent = wsUrl;
+
+        const chatDiv = document.getElementById('chat');
+        const input = document.getElementById('input');
+        const sendBtn = document.getElementById('sendBtn');
+        const statusDiv = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const documentDiv = document.getElementById('documentDiv');
+        const documentLink = document.getElementById('documentLink');
+
+        let ws;
+        let typingIndicator = null;
+
+        function connect() {
+            statusDiv.className = 'disconnected';
+            statusDiv.textContent = '🟡 Подключение...';
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                statusDiv.className = 'connected';
+                statusDiv.textContent = '🟢 Подключено';
+                input.disabled = false;
+                sendBtn.disabled = false;
+                addSystemMessage('✅ WebSocket подключен!');
+                console.log('✅ Connected!');
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log('📨 Received:', data);
+
+                if (data.type === 'connected') {
+                    addSystemMessage(`Сессия: ${data.session_id}`);
+                }
+
+                if (data.type === 'typing') {
+                    showTyping();
+                }
+
+                if (data.type === 'response') {
+                    hideTyping();
+                    addAssistantMessage(data.content);
+                    updateProgress(data.progress);
+
+                    if (data.document_ready && data.document_path) {
+                        showDocument(data.document_path);
+                    }
+                }
+
+                if (data.type === 'error') {
+                    addSystemMessage('❌ ' + data.message);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('❌ WebSocket error:', error);
+                addSystemMessage('❌ Ошибка подключения');
+            };
+
+            ws.onclose = () => {
+                statusDiv.className = 'disconnected';
+                statusDiv.textContent = '🔴 Отключено';
+                input.disabled = true;
+                sendBtn.disabled = true;
+                addSystemMessage('🔴 Соединение закрыто');
+                console.log('🔴 Disconnected');
+            };
+        }
+
+        function sendMessage() {
+            const text = input.value.trim();
+            if (!text || ws.readyState !== WebSocket.OPEN) return;
+
+            ws.send(JSON.stringify({
+                type: 'message',
+                content: text
+            }));
+
+            addUserMessage(text);
+            input.value = '';
+        }
+
+        function addUserMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'message user';
+            div.innerHTML = `<strong>Вы:</strong><br>${text}`;
+            chatDiv.appendChild(div);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        function addAssistantMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'message assistant';
+            div.innerHTML = `<strong>🤖 Ассистент:</strong><br>${text}`;
+            chatDiv.appendChild(div);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        function addSystemMessage(text) {
+            const div = document.createElement('div');
+            div.className = 'message system';
+            div.innerHTML = `ℹ️ ${text}`;
+            chatDiv.appendChild(div);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        function showTyping() {
+            if (typingIndicator) return;
+
+            typingIndicator = document.createElement('div');
+            typingIndicator.id = 'typing';
+            typingIndicator.className = 'message assistant';
+            typingIndicator.innerHTML = '<div class="typing">⌨️ Ассистент печатает</div>';
+            chatDiv.appendChild(typingIndicator);
+            chatDiv.scrollTop = chatDiv.scrollHeight;
+        }
+
+        function hideTyping() {
+            if (typingIndicator) {
+                typingIndicator.remove();
+                typingIndicator = null;
+            }
+        }
+
+        function updateProgress(progress) {
+            const percent = Math.round(progress * 100);
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = percent + '%';
+        }
+
+        function showDocument(path) {
+            const filename = path.split('/').pop();
+            documentDiv.style.display = 'block';
+            documentLink.innerHTML = `
+                <a href="/api/documents/${filename}" class="download-btn" download>
+                    📄 Скачать ${filename}
+                </a>
+            `;
+        }
+
+        sendBtn.onclick = sendMessage;
+        input.onkeypress = (e) => {
+            if (e.key === 'Enter') sendMessage();
+        };
+
+        // Автоподключение
+        connect();
+
+        // Подсказки
+        setTimeout(() => {
+            addSystemMessage('💡 Попробуйте: "Хочу создать техническое задание на новую фичу"');
+        }, 1000);
+    </script>
+</body>
+</html>
+```
+
+#### Шаг 3: Открой в браузере
+```
+http://localhost:8000/static/ws_test.html
+```
+
+**ВАЖНО:** Открывай именно через `http://localhost:8000`, а НЕ через `file://`!
+
+---
+
+## 📝 Тестовый сценарий:
+
+После открытия страницы:
+
+### 1. Первое сообщение:
+```
+Привет! Хочу создать техническое задание на новую фичу
+```
+
+### 2. Второе сообщение:
+```
+Это система обработки платежей с интеграцией банковского API
+```
+
+### 3. Третье сообщение:
+```
+Нужна поддержка VISA, MasterCard и местных карт
+```
+
+### 4. Четвертое сообщение:
+```
+Да, все ясно, создавай документ
+```
+
+### 5. Наблюдай:
+- ✅ Progress bar растет: 20% → 40% → 60% → 80% → 100%
+- ✅ Появляется индикатор "Ассистент печатает..."
+- ✅ Приходят ответы от LLM
+- ✅ После 4-5 сообщений генерируется документ
+- ✅ Появляется кнопка "Скачать документ"
+
+---
+
+## 🔍 Проверь в логах сервера:
+
+Когда откроешь страницу и отправишь сообщение, в терминале должно появиться:
+```
+INFO: 127.0.0.1:xxxxx - "WebSocket /ws/chat/test-1764202418775" [accepted]
+INFO: WebSocket connection established
+INFO: HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"

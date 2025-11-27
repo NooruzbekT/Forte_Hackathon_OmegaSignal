@@ -1,0 +1,18 @@
+graph TB
+    %% Use Case Diagram
+
+    Оператор[/Оператор/]
+    Пользователь[/Пользователь/]
+
+    UC_001(Оплата через VISA)
+    UC_002(Оплата через MasterCard)
+    UC_003(Возврат платежа)
+
+    Пользователь --> UC_001
+    Пользователь --> UC_002
+    Оператор --> UC_003
+
+    classDef actor fill:#FFE4B5,stroke:#333,stroke-width:2px
+    classDef usecase fill:#87CEEB,stroke:#333,stroke-width:2px
+
+    class Оператор,Пользователь actor

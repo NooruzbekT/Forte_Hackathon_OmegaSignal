@@ -27,10 +27,17 @@ class Settings(BaseSettings):
     APP_NAME: str = "ForteBank BA Assistant"
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
+
+    # Confluence Integration
+    CONFLUENCE_URL: Optional[str] = None
+    CONFLUENCE_USERNAME: Optional[str] = None
+    CONFLUENCE_API_TOKEN: Optional[str] = None
+    CONFLUENCE_SPACE_KEY: str = "AI"
     
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = 'ignore'
 
 
 # Singleton

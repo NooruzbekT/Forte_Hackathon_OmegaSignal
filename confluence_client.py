@@ -3,13 +3,14 @@ Confluence API Integration
 Создание страниц, загрузка документов, вставка Mermaid диаграмм
 """
 import logging
-import base64
+import mimetypes
 import re
 from typing import Optional, Dict, List
 import httpx
 from pathlib import Path
-
 logger = logging.getLogger(__name__)
+import base64
+
 
 
 class ConfluenceClient:
@@ -37,6 +38,8 @@ class ConfluenceClient:
         self.base_url = base_url.rstrip('/')
         self.api_url = f"{self.base_url}/wiki/rest/api"
         self.space_key = space_key
+        self.username = username
+        self.api_token = api_token
 
         # Basic Auth
         auth_string = f"{username}:{api_token}"
@@ -55,6 +58,9 @@ class ConfluenceClient:
         )
 
         logger.info(f"Confluence client initialized: {self.base_url}")
+
+    def _auth(self):
+        return base64.b64encode(f"{self.username}:{self.api_token}".encode()).decode()
 
     async def test_connection(self) -> bool:
         """Проверка подключения к Confluence"""
@@ -194,58 +200,38 @@ class ConfluenceClient:
             logger.error(f"❌ Failed to get page: {e.response.text}")
             raise
 
-    async def attach_file(
-        self,
-        page_id: str,
-        filepath: str,
-        comment: Optional[str] = None
-    ) -> Dict:
-        """
-        Прикрепить файл к странице.
-
-        Args:
-            page_id: ID страницы
-            filepath: Путь к файлу
-            comment: Комментарий (опционально)
-
-        Returns:
-            Данные о вложении
-        """
+    async def attach_file(self, page_id: str, filepath: str):
         file_path = Path(filepath)
-
         if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {filepath}")
+            raise FileNotFoundError(filepath)
 
-        with open(file_path, 'rb') as f:
-            files = {
-                'file': (file_path.name, f, 'application/octet-stream')
-            }
+        import mimetypes
+        mime, _ = mimetypes.guess_type(file_path.name)
+        mime = mime or "application/octet-stream"  # fallback
 
-            data = {}
-            if comment:
-                data['comment'] = comment
+        # ❗ Удаляем content-type — httpx сам поставит multipart
+        headers = {
+            "Authorization": self.headers["Authorization"],
+            "Accept": "application/json"
+        }
 
-            # Для attachments нужен multipart/form-data
-            headers = self.headers.copy()
-            del headers['Content-Type']  # httpx добавит автоматически
+        with open(file_path, "rb") as f:
+            files = {"file": (file_path.name, f, mime)}
 
-            try:
-                response = await self.client.post(
-                    f"{self.api_url}/content/{page_id}/child/attachment",
-                    files=files,
-                    data=data,
-                    headers=headers
-                )
-                response.raise_for_status()
-                result = response.json()
+            r = await self.client.post(
+                f"{self.base_url}/wiki/rest/api/content/{page_id}/child/attachment",
+                headers=headers,
+                files=files
+            )
 
-                logger.info(f"✅ File attached: {file_path.name} to page {page_id}")
+        print("ATTACH STATUS:", r.status_code)
+        print("RESP:", r.text)
 
-                return result
-
-            except httpx.HTTPStatusError as e:
-                logger.error(f"❌ Failed to attach file: {e.response.text}")
-                raise
+        if r.status_code in (200, 201):
+            print("🔥 SUCCESS — FILE ATTACHED!")
+            return r.json()
+        else:
+            raise Exception("❌ FAIL — FILE NOT ATTACHED")
 
     async def search_pages(
         self,
@@ -304,26 +290,15 @@ class ConfluenceMermaidHelper:
     @staticmethod
     def wrap_mermaid_macro(mermaid_code: str) -> str:
         """
-        Оборачивает Mermaid код в Confluence макрос.
-
-        Confluence использует макрос для рендеринга Mermaid:
-        https://marketplace.atlassian.com/apps/1224722/mermaid-diagrams-charts
+        Оборачивает Mermaid код в Confluence макрос (правильный для mermaidjs!)
         """
-        # Экранируем специальные символы для XML
-        escaped_code = (
-            mermaid_code
-            .replace('&', '&amp;')
-            .replace('<', '&lt;')
-            .replace('>', '&gt;')
-            .replace('"', '&quot;')
-        )
-
-        macro = f'''
-<ac:structured-macro ac:name="mermaid" ac:schema-version="1">
-  <ac:plain-text-body><![CDATA[{escaped_code}]]></ac:plain-text-body>
-</ac:structured-macro>
-'''
-        return macro
+        return f'''
+    <ac:structured-macro ac:name="mermaidjs" ac:schema-version="1" data-layout="default" ac:macro-id="auto">
+      <ac:parameter ac:name="theme">default</ac:parameter>
+      <ac:parameter ac:name="version">2</ac:parameter>
+      <ac:plain-text-body><![CDATA[{mermaid_code}]]></ac:plain-text-body>
+    </ac:structured-macro>
+    '''
 
     @staticmethod
     def create_brd_page_with_diagrams(

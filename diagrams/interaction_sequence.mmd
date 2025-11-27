@@ -1,0 +1,23 @@
+sequenceDiagram
+    %% AI Business Analyst - Процесс взаимодействия
+
+    participant User
+    participant Frontend
+    participant API
+    participant LLM
+    participant DocGen
+
+    User->>+Frontend: Хочу создать BRD
+    Frontend->>+API: POST /api/chat
+    API->>+LLM: Classify intent
+    LLM-->>-API: DocumentType.NEW_FEATURE
+    API-->>-Frontend: Расскажите о проекте
+    Frontend-->>-User: Показ ответа
+    User->>+Frontend: Система платежей...
+    Frontend->>+API: Продолжение диалога
+    API->>+LLM: Generate response
+    LLM-->>-API: Уточняющие вопросы
+    API->>+DocGen: Create BRD
+    DocGen-->>-API: BRD.docx
+    API-->>-Frontend: Документ готов!
+    Frontend-->>-User: Скачать документ

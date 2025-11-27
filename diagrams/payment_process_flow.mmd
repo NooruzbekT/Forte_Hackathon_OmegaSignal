@@ -1,0 +1,27 @@
+flowchart TD
+    %% Процесс обработки платежа через банковский API
+
+    start([Начало процесса])
+    input[Ввод данных карты]
+    validate{Валидация данных?}
+    process[Обработка платежа]
+    bank[/Запрос в банк/]
+    approved{Одобрено?}
+    success[Успешная оплата]
+    end([Завершение])
+
+    start --> input
+    input --> validate
+    validate --> process
+    process -->|✓ Данные верны| bank
+    bank --> approved
+    approved --> success
+    success -->|✓ Да| end
+
+    %% Styles
+    classDef startEnd fill:#90EE90,stroke:#333,stroke-width:2px
+    classDef process fill:#87CEEB,stroke:#333,stroke-width:2px
+    classDef decision fill:#FFD700,stroke:#333,stroke-width:2px
+    
+    class A,Z startEnd
+    class B,C,D,E,F process

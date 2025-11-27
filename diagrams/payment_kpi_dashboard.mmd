@@ -1,0 +1,29 @@
+graph TD
+    %% KPI Dashboard
+
+    KPI[KPI Dashboard]
+
+    subgraph Performance[Performance]
+        Performance_0[Transaction Success Rate<br/>Target: ≥ 95%]
+        Performance_1[Average Processing Time<br/>Target: < 2 seconds]
+    end
+
+    KPI --> Performance
+
+    subgraph Business[Business]
+        Business_0[Revenue Growth<br/>Target: + 20%]
+    end
+
+    KPI --> Business
+
+    subgraph Usability[Usability]
+        Usability_0[Customer Satisfaction<br/>Target: ≥ 4.5/5]
+    end
+
+    KPI --> Usability
+
+    subgraph Security[Security]
+        Security_0[Fraud Detection Rate<br/>Target: ≥ 99%]
+    end
+
+    KPI --> Security

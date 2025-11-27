@@ -4,6 +4,7 @@ REST API + WebSocket для real-time чата
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -135,6 +136,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+if os.path.exists("static"):
+    app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # CORS
 app.add_middleware(
