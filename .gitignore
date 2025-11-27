@@ -76,3 +76,4 @@ build/
 *.swo
 *.orig
 coverage/
+data/sessions.db

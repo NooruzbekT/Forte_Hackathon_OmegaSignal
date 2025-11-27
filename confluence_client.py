@@ -3,7 +3,7 @@ Confluence API Integration
 Создание страниц, загрузка документов, вставка Mermaid диаграмм
 """
 import logging
-import mimetypes
+import requests
 import re
 from typing import Optional, Dict, List
 import httpx
@@ -200,38 +200,45 @@ class ConfluenceClient:
             logger.error(f"❌ Failed to get page: {e.response.text}")
             raise
 
-    async def attach_file(self, page_id: str, filepath: str):
+    async def attach_file(
+            self,
+            page_id: str,
+            filepath: str,
+            comment: Optional[str] = None
+    ) -> Dict:
+        """Прикрепить файл (sync через requests)"""
+        import requests
+
         file_path = Path(filepath)
         if not file_path.exists():
-            raise FileNotFoundError(filepath)
+            raise FileNotFoundError(f"File not found: {filepath}")
 
-        import mimetypes
-        mime, _ = mimetypes.guess_type(file_path.name)
-        mime = mime or "application/octet-stream"  # fallback
+        url = f"{self.base_url}/wiki/rest/api/content/{page_id}/child/attachment"
 
-        # ❗ Удаляем content-type — httpx сам поставит multipart
+        # Basic Auth
+        auth = (self.username, self.api_token)
+
         headers = {
-            "Authorization": self.headers["Authorization"],
+            "X-Atlassian-Token": "no-check",
             "Accept": "application/json"
         }
 
         with open(file_path, "rb") as f:
-            files = {"file": (file_path.name, f, mime)}
+            files = {"file": (file_path.name, f)}
 
-            r = await self.client.post(
-                f"{self.base_url}/wiki/rest/api/content/{page_id}/child/attachment",
+            response = requests.post(
+                url,
+                auth=auth,
                 headers=headers,
-                files=files
+                files=files,
+                timeout=30
             )
 
-        print("ATTACH STATUS:", r.status_code)
-        print("RESP:", r.text)
-
-        if r.status_code in (200, 201):
-            print("🔥 SUCCESS — FILE ATTACHED!")
-            return r.json()
+        if response.status_code in (200, 201):
+            print(f"✅ FILE ATTACHED!")
+            return response.json()
         else:
-            raise Exception("❌ FAIL — FILE NOT ATTACHED")
+            raise Exception(f"Failed: {response.status_code} - {response.text}")
 
     async def search_pages(
         self,
