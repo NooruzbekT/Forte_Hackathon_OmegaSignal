@@ -1,6 +1,6 @@
 """
-🏆 FINAL API SERVER - ForteBank AI Hackathon 2024
-Полностью интегрированный бэкенд со ВСЕМИ бонусными фичами (+20 баллов)
+🏆 FINAL API SERVER - ForteBank AI Hackathon 2025
+Полностью интегрированный бэкенд со ВСЕМИ бонусными фичами
 
 Features:
 ✅ REST API + WebSocket
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Optional, List, Dict
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Query
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, BackgroundTasks, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 # Наши модули
 from ba_assistant import BAAssistant, create_ba_assistant
+from config import settings
 from diagram_generator import MermaidGenerator
 from confluence_client import ConfluenceClient, ConfluenceMermaidHelper
 from session_history import SessionHistoryDB
@@ -187,13 +188,13 @@ async def lifespan(app: FastAPI):
         logger.info("✅ Mermaid Converter initialized (API mode)")
 
         # Initialize Confluence Client (if configured)
-        confluence_url = os.getenv("CONFLUENCE_URL")
+        confluence_url = settings.CONFLUENCE_URL
         if confluence_url:
             app_state.confluence_client = ConfluenceClient(
                 base_url=confluence_url,
-                username=os.getenv("CONFLUENCE_USERNAME", ""),
-                api_token=os.getenv("CONFLUENCE_API_TOKEN", ""),
-                space_key=os.getenv("CONFLUENCE_SPACE_KEY", "AI")
+                username=settings.CONFLUENCE_USERNAME,
+                api_token=settings.CONFLUENCE_API_TOKEN,
+                space_key=settings.CONFLUENCE_SPACE_KEY,
             )
             logger.info("✅ Confluence Client initialized")
         else:
@@ -506,7 +507,7 @@ async def reset_session(session_id: str):
 @app.post("/api/session/{session_id}/summary", response_model=SessionSummaryResponse)
 async def generate_session_summary(session_id: str):
     """
-    🆕 Генерировать AI-powered summary сессии (+5 баллов)
+     Генерировать AI-powered summary сессии
     """
     try:
         session = app_state.history_db.get_session(session_id)
@@ -538,9 +539,17 @@ async def generate_session_summary(session_id: str):
 }}
 """
 
-        llm_response = await app_state.assistant.llm.generate(
-            prompt=summary_prompt,
-            system_prompt="You are a business analyst summarizing conversations. Return ONLY valid JSON.",
+        llm_response = await app_state.assistant.llm.chat(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a business analyst summarizing conversations. Return ONLY valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": summary_prompt
+                }
+            ],
             temperature=0.3,
             max_tokens=500
         )
@@ -637,7 +646,7 @@ async def delete_document(filename: str):
 @app.post("/api/diagrams/generate", response_model=DiagramResponse)
 async def generate_diagram(request: DiagramGenerateRequest):
     """
-    🆕 Генерировать Mermaid диаграмму (+5 баллов)
+     Генерировать Mermaid диаграмму
 
     Types: process_flow, sequence, use_case, kpi_dashboard
     """
@@ -691,29 +700,40 @@ async def generate_diagram(request: DiagramGenerateRequest):
 @app.post("/api/diagrams/mermaid-to-png")
 async def convert_mermaid_to_png(request: MermaidToPNGRequest):
     """
-    🆕 Конвертировать Mermaid в PNG (+5 баллов)
+    🆕 Конвертировать Mermaid в PNG
 
-    **Request body:**
-    ```json
+    Request body:
     {
       "mermaid_code": "graph TD\\n    A-->B",
       "return_base64": true
     }
-    ```
     """
     try:
         if request.return_base64:
-            base64_img = app_state.mermaid_converter.convert_and_embed_base64(request.mermaid_code)
+            base64_img = app_state.mermaid_converter.convert_and_embed_base64(
+                request.mermaid_code
+            )
             return {
                 "format": "base64",
                 "data": base64_img
             }
         else:
-            png_path = app_state.mermaid_converter.convert_to_png(request.mermaid_code)
+
+            filename = f"{uuid.uuid4().hex}.png"
+            diagrams_dir = Path("diagrams")
+            diagrams_dir.mkdir(exist_ok=True)
+
+            target_path = diagrams_dir / filename
+
+            png_path = app_state.mermaid_converter.convert_to_png(
+                request.mermaid_code,
+                output_path=str(target_path),
+            )
+
             return {
                 "format": "file",
-                "path": png_path,
-                "url": f"/diagrams/{Path(png_path).name}"
+                "path": png_path,                 # реальный путь на диске
+                "url": f"/diagrams/{filename}"    # рабочий URL для браузера
             }
 
     except Exception as e:
@@ -731,7 +751,7 @@ async def list_session_history(
     status: Optional[str] = None
 ):
     """
-    🆕 Список всех сессий с историей (+5 баллов)
+    🆕 Список всех сессий с историей
     """
     try:
         sessions = app_state.history_db.list_sessions(limit=limit, status=status)
@@ -928,6 +948,127 @@ async def cleanup_old_history(request: CleanupHistoryRequest):
         logger.error(f"Cleanup failed: {e}")
         raise HTTPException(500, str(e))
 
+
+@app.post("/api/session/{session_id}/upload-doc")
+async def upload_document(session_id: str, file: UploadFile):
+    """
+    Загрузить и привязать документ к конкретной сессии.
+    """
+    save_path = docs_dir / file.filename
+
+    with open(save_path, "wb") as f:
+        f.write(await file.read())
+
+    app_state.history_db.update_session(
+        session_id,
+        document_path=str(save_path)
+    )
+
+    return {"status": "ok", "path": str(save_path)}
+
+
+@app.get("/api/session/{session_id}/document")
+async def get_session_document(session_id: str):
+    """
+    Получить документ, прикреплённый к сессии.
+    """
+    session = app_state.history_db.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    doc_path = session.get("document_path")
+    if not doc_path or not Path(doc_path).exists():
+        raise HTTPException(404, "Document not found")
+
+    return FileResponse(
+        path=doc_path,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=Path(doc_path).name
+    )
+
+@app.post("/api/session/{session_id}/republish")
+async def republish_to_confluence(session_id: str):
+    """
+    Повторная публикация BRD в Confluence.
+    """
+    if not app_state.confluence_client:
+        raise HTTPException(503, "Confluence not configured")
+
+    session = app_state.history_db.get_session(session_id)
+    if not session:
+        raise HTTPException(404, "Session not found")
+
+    doc_path = session.get("document_path")
+    if not doc_path or not Path(doc_path).exists():
+        raise HTTPException(404, "No document to publish")
+
+    # OPTION A: Извлечь MD из DOCX → Реализуем позже или используем content из сессии
+    brd_text = "BRD content extraction to be implemented"
+
+    html = ConfluenceMermaidHelper.create_brd_page_with_diagrams(
+        title=f"BRD - {session_id}",
+        brd_content=brd_text,
+        mermaid_diagrams={}
+    )
+
+    page = await app_state.confluence_client.create_page(
+        title=f"BRD (republished) - {session_id}",
+        content=html
+    )
+
+    return {"status": "ok", "url": page["url"]}
+
+class SummaryRequest(BaseModel):
+    content: str
+
+
+@app.post("/api/assistant/summary")
+async def assistant_summary(req: SummaryRequest):
+    """
+    Сгенерировать summary по любому тексту.
+    """
+    prompt = f"Сделай бизнес-ориентированное summary следующего текста:\n\n{req.content}"
+
+    result = await app_state.assistant.llm.chat(
+        messages=[
+            {"role": "system", "content": "Ты бизнес-аналитик. Пиши чётко и структурировано, без воды."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0.3,
+        max_tokens=1200,
+    )
+
+    return {"summary": result}
+
+
+@app.post("/api/documents/{filename}/publish")
+async def publish_uploaded_document(filename: str):
+    """
+    Опубликовать загруженный документ в Confluence.
+    """
+    if not app_state.confluence_client:
+        raise HTTPException(503, "Confluence not configured")
+
+    filepath = docs_dir / filename
+
+    if not filepath.exists():
+        raise HTTPException(404, "Document not found")
+
+    # Placeholder — можно прикрутить извлечение MD из DOCX
+    brd_text = "BRD content extracted from DOCX (future improvement)"
+
+    html = ConfluenceMermaidHelper.create_brd_page_with_diagrams(
+        title=filename,
+        brd_content=brd_text,
+        mermaid_diagrams={}
+    )
+
+    page = await app_state.confluence_client.create_page(
+        title=filename,
+        content=html
+    )
+
+    return {"status": "ok", "url": page["url"]}
 
 # ============================================================================
 # ERROR HANDLERS

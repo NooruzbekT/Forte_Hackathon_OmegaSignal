@@ -3,7 +3,6 @@ Confluence API Integration
 Создание страниц, загрузка документов, вставка Mermaid диаграмм
 """
 import logging
-import requests
 import re
 from typing import Optional, Dict, List
 import httpx

@@ -107,7 +107,7 @@ class SessionHistoryDB:
         with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.cursor()
 
-            now = datetime.now()
+            now = datetime.utcnow().isoformat()
 
             cursor.execute("""
                 INSERT OR REPLACE INTO sessions 
@@ -163,7 +163,6 @@ class SessionHistoryDB:
         with sqlite3.connect(str(self.db_path)) as conn:
             cursor = conn.cursor()
 
-            # Динамически строим UPDATE
             fields = []
             values = []
 
@@ -174,7 +173,8 @@ class SessionHistoryDB:
                 values.append(value)
 
             fields.append("updated_at = ?")
-            values.append(datetime.now())
+            values.append(datetime.utcnow().isoformat())
+
             values.append(session_id)
 
             query = f"""

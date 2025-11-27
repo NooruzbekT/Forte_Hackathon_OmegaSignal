@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     # Confluence Integration
-    CONFLUENCE_URL: Optional[str] = None
-    CONFLUENCE_USERNAME: Optional[str] = None
+    CONFLUENCE_URL: Optional[str] = "https://nookentoktobaev.atlassian.net"
+    CONFLUENCE_USERNAME: Optional[str] = "nookentoktobaev@gmail.com"
     CONFLUENCE_API_TOKEN: Optional[str] = None
     CONFLUENCE_SPACE_KEY: str = "AI"
     

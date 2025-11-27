@@ -212,7 +212,7 @@ async def main():
                     
                     # Пробуем найти путь к документу в ответе
                     import re
-                    match = re.search(r'`([^`]+\.md)`', response)
+                    match = re.search(r'`([^`]+\.docx)`', response)
                     if match:
                         last_doc_path = match.group(1)
                         print(Fore.CYAN + f"📄 Файл: {Fore.WHITE}{last_doc_path}")

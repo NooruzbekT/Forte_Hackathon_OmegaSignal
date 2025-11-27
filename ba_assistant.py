@@ -11,6 +11,10 @@ from dataclasses import dataclass, field
 
 from llm_client import LLMClient
 from document_generator import CorporateDocxGenerator
+from session_history import SessionHistoryDB
+from diagram_generator import ArtifactExtractor, MermaidGenerator
+from confluence_client import ConfluenceClient, ConfluenceMermaidHelper
+from config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +50,8 @@ class ConversationState:
     conversation_history: List[Dict[str, str]] = field(default_factory=list)
     user_id: Optional[str] = None
     session_id: Optional[str] = None
+    document_ready: bool = False
+    last_document_path: Optional[str] = None
 
 
 # ============================================================================
@@ -820,11 +826,27 @@ class BAAssistant:
         
         # ✅ DOCX Generator для корпоративных документов
         self.doc_generator = CorporateDocxGenerator(output_dir="docs")
+        # ✅ История сессий (SQLite)
+        self.history_db = SessionHistoryDB(db_path="data/sessions.db")
+        self.confluence: Optional[ConfluenceClient] = None
+
+        if (
+                settings.CONFLUENCE_URL
+                and settings.CONFLUENCE_USERNAME
+                and settings.CONFLUENCE_API_TOKEN
+        ):
+            self.confluence = ConfluenceClient(
+                base_url=settings.CONFLUENCE_URL,
+                username=settings.CONFLUENCE_USERNAME,
+                api_token=settings.CONFLUENCE_API_TOKEN,
+                space_key=settings.CONFLUENCE_SPACE_KEY,
+            )
     
     def _get_or_create_state(self, session_id: str) -> ConversationState:
         """Получить или создать состояние для сессии"""
         if session_id not in self.states:
             self.states[session_id] = ConversationState(session_id=session_id)
+            self.history_db.create_session(session_id=session_id)
         return self.states[session_id]
     
     async def process_message(
@@ -846,11 +868,20 @@ class BAAssistant:
         state: ConversationState
     ) -> str:
         """Определяем тип документа и начинаем диалог"""
+        self.history_db.add_message(
+            session_id=state.session_id,
+            role="user",
+            content=user_message
+        )
         
         classification = await self.router.route(user_message)
         
         logger.info(f"Intent: {classification.doc_type} (conf: {classification.confidence})")
-        
+        self.history_db.update_session(
+            session_id=state.session_id,
+            doc_type=classification.doc_type.value if classification.doc_type else None,
+        )
+
         if classification.needs_clarification:
             clarification_prompt = CLARIFICATION_PROMPT.format(user_input=user_message)
             messages = [{"role": "user", "content": clarification_prompt}]
@@ -859,7 +890,12 @@ class BAAssistant:
             # Сохраняем в историю
             state.conversation_history.append({"role": "user", "content": user_message})
             state.conversation_history.append({"role": "assistant", "content": response})
-            
+
+            self.history_db.add_message(
+                session_id=state.session_id,
+                role="assistant",
+                content=response
+            )
             return response
         
         # Сохраняем тип документа и промпт
@@ -885,7 +921,93 @@ class BAAssistant:
         state.conversation_history.append({"role": "assistant", "content": response})
         
         return response
-    
+
+    async def _publish_to_confluence(
+            self,
+            document_content: str,
+            docx_path: str,
+            state: ConversationState,
+    ) -> Optional[str]:
+        """
+        Публикация BRD в Confluence с Mermaid-диаграммами.
+        Возвращает URL страницы или None.
+        """
+        if not self.confluence:
+            return None
+
+        # 1) Заголовок
+        title = self._extract_title_from_markdown(document_content) or "AI BA Document"
+
+        # 2) Извлекаем артефакты из документа (Use Cases, KPI, User Stories)
+        artifacts = ArtifactExtractor.extract_all_artifacts(document_content)
+
+        mermaid = MermaidGenerator()
+        diagrams: Dict[str, str] = {}
+
+        # 3) Use Case Diagram
+        use_cases = artifacts.get("use_cases") or []
+        if use_cases:
+            diagrams["Use Case Diagram"] = mermaid.generate_use_case_diagram(use_cases)
+
+        # 4) Process Flow — берём основной флоу первого Use Case
+        if use_cases and use_cases[0].main_flow:
+            steps = []
+            for idx, step in enumerate(use_cases[0].main_flow, start=1):
+                node_id = chr(ord('A') + idx - 1)  # A, B, C...
+                steps.append({
+                    "id": node_id,
+                    "label": step,
+                    "type": "process" if idx not in (1, len(use_cases[0].main_flow)) else (
+                        "start" if idx == 1 else "end"
+                    ),
+                })
+            diagrams["Process Flow"] = mermaid.generate_process_flow(
+                title="Main Use Case Flow",
+                steps=steps,
+                style="TD",
+            )
+
+        # 5) KPI Dashboard
+        kpis = artifacts.get("kpis") or []
+        if kpis:
+            diagrams["KPI Dashboard"] = mermaid.generate_kpi_dashboard(kpis)
+
+        # 6) Собираем HTML для Confluence
+        html_content = ConfluenceMermaidHelper.create_brd_page_with_diagrams(
+            title=title,
+            brd_content=document_content,
+            mermaid_diagrams=diagrams,
+        )
+
+        # 7) Создаём страницу
+        page = await self.confluence.create_page(
+            title=title,
+            content=html_content,
+        )
+
+        page_id = page["id"]
+        page_url = page["url"]
+
+        # 8) Прикрепляем DOCX как вложение
+        try:
+            await self.confluence.attach_file(
+                page_id=page_id,
+                filepath=docx_path,
+                comment="Generated BRD document (DOCX) from AI BA Assistant",
+            )
+        except Exception as e:
+            logger.error(f"Attach DOCX failed: {e}")
+
+        # 9) Обновляем метаданные сессии
+        self.history_db.update_session(
+            session_id=state.session_id,
+            metadata={
+                "confluence_page_id": page_id,
+                "confluence_url": page_url,
+            },
+        )
+
+        return page_url
     async def _continue_conversation(
         self, 
         user_message: str, 
@@ -894,19 +1016,57 @@ class BAAssistant:
         """Продолжаем диалог"""
         
         state.conversation_history.append({"role": "user", "content": user_message})
-        
+
+        self.history_db.add_message(
+            session_id=state.session_id,
+            role="user",
+            content=user_message
+        )
+
         full_prompt = self._build_prompt_with_history(state)
         messages = [{"role": "user", "content": full_prompt}]
         
         response = await self.llm.chat(messages=messages, temperature=0.7, max_tokens=4000)
         
         state.conversation_history.append({"role": "assistant", "content": response})
-        
+
+        self.history_db.add_message(
+            session_id=state.session_id,
+            role="assistant",
+            content=response
+        )
         # Проверяем завершение диалога
         if self._is_document_complete(response):
             document_content = self._extract_document(response)
+
+            # ✅ Сохраняем DOCX
             doc_path = self._save_generated_document(document_content, state)
-            
+
+            # ✅ Обновляем сессию как завершённую
+            self.history_db.update_session(
+                session_id=state.session_id,
+                progress=1.0,
+                status="completed",
+                document_path=doc_path
+            )
+
+            # Обновляем внутреннее состояние ассистента
+            state.document_ready = True
+            state.last_document_path = doc_path
+
+            confluence_url = None
+
+            # ✅ Публикация в Confluence (если настроено)
+            if self.confluence:
+                try:
+                    confluence_url = await self._publish_to_confluence(
+                        document_content=document_content,
+                        docx_path=doc_path,
+                        state=state,
+                    )
+                except Exception as e:
+                    logger.error(f"Confluence publish failed: {e}")
+
             doc_type_names = {
                 DocumentType.NEW_FEATURE: "Business Requirements Document",
                 DocumentType.BUG_FIX: "Bug Fix Requirements",
@@ -914,20 +1074,32 @@ class BAAssistant:
                 DocumentType.INTEGRATION: "Integration Requirements",
                 DocumentType.DATA_REQUEST: "Data Request Specification"
             }
-            
+
             doc_name = doc_type_names.get(state.doc_type, "Document")
-            
+
             completion_message = (
-                f"\n\n{'='*60}\n"
+                f"\n\n{'=' * 60}\n"
                 f"✅ **{doc_name} создан!**\n"
                 f"📄 Файл: `{doc_path}`\n"
                 f"📂 Папка: `docs/`\n"
-                f"{'='*60}\n\n"
+            )
+
+            if confluence_url:
+                completion_message += f"🌐 Опубликовано в Confluence: {confluence_url}\n"
+
+            completion_message += (
+                f"{'=' * 60}\n\n"
                 f"🔄 Сессия завершена. Используйте /reset для нового документа."
             )
-            
+
             return completion_message
-        
+
+        progress = self._estimate_progress(state)
+        self.history_db.update_session(
+            session_id=state.session_id,
+            progress=progress,
+            status="active",
+        )
         return response
     
     def _build_prompt_with_history(self, state: ConversationState) -> str:
@@ -940,10 +1112,20 @@ class BAAssistant:
         
         parts.append("\n\nТвой ответ:")
         return "".join(parts)
-    
+
     def _is_document_complete(self, response: str) -> bool:
         """Проверяет содержит ли ответ готовый документ"""
-        return "[DOCUMENT_START]" in response
+        if "[DOCUMENT_START]" in response:
+            return True
+
+        # Fallback: ассистент не прислал документ, но прислал финальный блок
+        if "📄 Файл:" in response:
+            return True
+
+        if "создан" in response and "Business Requirements Document" in response:
+            return True
+
+        return False
     
     def _extract_document(self, response: str) -> str:
         """Извлекает документ из ответа"""
@@ -976,9 +1158,7 @@ class BAAssistant:
         )
         
         logger.info(f"DOCX document saved: {filepath}")
-        
-        # Автоматически сбрасываем сессию
-        self.reset_session(state.session_id)
+
         
         return filepath
     
