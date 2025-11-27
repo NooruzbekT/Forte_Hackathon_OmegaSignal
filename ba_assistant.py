@@ -1146,21 +1146,34 @@ class BAAssistant:
         return response
     
     def _save_generated_document(self, content: str, state: ConversationState) -> str:
-        """Сохраняет документ в DOCX формате и сбрасывает сессию"""
+        """Сохраняет документ в DOCX формате и переименовывает его с session_id в имени."""
         title = self._extract_title_from_markdown(content)
-        
-        # ✅ Генерируем DOCX документ в корпоративном стиле
-        filepath = self.doc_generator.generate_docx(
+
+        # Генерируем DOCX документ в корпоративном стиле
+        original_path = self.doc_generator.generate_docx(
             markdown_content=content,
             doc_type=state.doc_type.value,
             session_id=state.session_id or "unknown",
-            user_title=title
+            user_title=title,
         )
-        
-        logger.info(f"DOCX document saved: {filepath}")
 
-        
-        return filepath
+        original_path = Path(original_path)
+        final_path = original_path
+
+        # 🔹 Добавляем session_id в имя файла: <session_id>__<старое_имя>.docx
+        if state.session_id:
+            new_name = f"{state.session_id}__{original_path.name}"
+            new_path = original_path.with_name(new_name)
+
+            try:
+                original_path.rename(new_path)
+                final_path = new_path
+            except OSError as e:
+                logger.error(f"Failed to rename DOCX file with session_id: {e}")
+                # В fallback остаёмся на оригинальном имени
+
+        logger.info(f"DOCX document saved: {final_path}")
+        return str(final_path)
     
     def _extract_title_from_markdown(self, content: str) -> Optional[str]:
         """Извлекает заголовок из Markdown контента"""
