@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ChatDotRound, Document, List, Delete, Download } from '@element-plus/icons-vue'
+import { ChatDotRound, Document, List, Delete, Download, DocumentCopy } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { useChatStore } from '@/stores/chatStore'
@@ -89,6 +89,118 @@ async function handleDownloadDocument(doc) {
   } catch (err) {
     console.error('Ошибка скачивания:', err)
     ElMessage.error('Не удалось скачать документ')
+  }
+}
+
+// ----------------------------
+// СЕССИИ (ЧАТЫ)
+// ----------------------------
+async function handleDeleteSession(sessionId) {
+  try {
+    await ElMessageBox.confirm(
+      `Вы уверены, что хотите удалить сессию "${sessionId}"?`,
+      'Подтверждение удаления',
+      {
+        confirmButtonText: 'Удалить',
+        cancelButtonText: 'Отмена',
+        type: 'warning',
+      }
+    )
+
+    // Отправляем запрос на бэкенд для удаления истории сессии
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const response = await fetch(`${API_BASE_URL}/api/history/${sessionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    // Удаляем сессию из стора
+    if (chatStore.deleteSession) {
+      await chatStore.deleteSession(sessionId)
+    }
+
+    // Если удалили текущую сессию - сбрасываем её
+    if (sessionId === currentSessionId.value) {
+      if (chatStore.resetCurrentSession) {
+        chatStore.resetCurrentSession()
+      }
+    }
+
+    // Перезагружаем список сессий
+    await chatStore.loadAllSessions()
+    
+    ElMessage.success('Сессия успешно удалена')
+  } catch (err) {
+    if (err !== 'cancel') {
+      console.error('Ошибка удаления сессии:', err)
+      ElMessage.error('Не удалось удалить сессию')
+    }
+  }
+}
+
+async function handleGenerateSummary(sessionId) {
+  try {
+    const loadingMessage = ElMessage({
+      message: 'Генерация сводки...',
+      type: 'info',
+      duration: 0,
+      icon: DocumentCopy
+    })
+
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+    const response = await fetch(`${API_BASE_URL}/api/session/${sessionId}/summary`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+
+    loadingMessage.close()
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    const data = await response.json()
+
+    // Форматируем key points в список
+    const keyPointsHtml = data.key_points
+      .map(point => `• ${point}`)
+      .join('<br/>')
+
+    // Показываем сводку в красивом диалоге
+    await ElMessageBox.alert(
+      `
+        <div style="text-align: left;">
+          <h3 style="margin-top: 0; color: var(--el-color-primary);">Сводка по сессии</h3>
+          <p><strong>Сессия ID:</strong> ${data.session_id}</p>
+          <p><strong>Тип документа:</strong> ${data.doc_type || 'Не указан'}</p>
+          <p><strong>Всего сообщений:</strong> ${data.total_messages}</p>
+          <hr style="margin: 16px 0; border: none; border-top: 1px solid #eee;"/>
+          <h4 style="margin-bottom: 8px;">Краткое описание:</h4>
+          <p style="line-height: 1.6;">${data.summary}</p>
+          <h4 style="margin-bottom: 8px; margin-top: 16px;">Ключевые моменты:</h4>
+          <p style="line-height: 1.8;">${keyPointsHtml}</p>
+        </div>
+      `,
+      'AI Сводка',
+      {
+        confirmButtonText: 'Закрыть',
+        dangerouslyUseHTMLString: true,
+        customClass: 'summary-dialog'
+      }
+    )
+
+    ElMessage.success('Сводка успешно создана')
+  } catch (err) {
+    console.error('Ошибка генерации сводки:', err)
+    ElMessage.error('Не удалось создать сводку')
   }
 }
 
@@ -264,12 +376,31 @@ onMounted(async () => {
             class="session-item"
             v-for="s in sessions"
             :key="s.session_id"
-            @click="openChat(s.session_id)"
             :class="{ active: s.session_id === currentSessionId }"
           >
-            <div class="session-id">{{ s.session_id }}</div>
-            <div class="session-meta">
-              {{ s.last_message ?? '...' }}
+            <div class="session-content" @click="openChat(s.session_id)">
+              <div class="session-id">{{ s.session_id }}</div>
+              <div class="session-meta">
+                {{ s.last_message ?? '...' }}
+              </div>
+            </div>
+            <div class="session-actions">
+              <el-button
+                size="small"
+                :icon="DocumentCopy"
+                type="primary"
+                @click.stop="handleGenerateSummary(s.session_id)"
+                circle
+                title="Создать сводку"
+              />
+              <el-button
+                size="small"
+                :icon="Delete"
+                type="danger"
+                @click.stop="handleDeleteSession(s.session_id)"
+                circle
+                title="Удалить сессию"
+              />
             </div>
           </div>
         </div>
@@ -446,6 +577,10 @@ onMounted(async () => {
   border-radius: var(--forte-radius-md);
   cursor: pointer;
   transition: all var(--forte-transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--forte-space-2);
 }
 
 .session-item:hover {
@@ -456,6 +591,27 @@ onMounted(async () => {
 .session-item.active {
   background: var(--forte-primary-lighter);
   border-left: 3px solid var(--forte-primary);
+}
+
+.session-content {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.session-actions {
+  display: flex;
+  gap: var(--forte-space-1);
+  flex-shrink: 0;
+}
+
+.session-actions .el-button {
+  opacity: 0;
+  transition: opacity var(--forte-transition-fast);
+}
+
+.session-item:hover .session-actions .el-button {
+  opacity: 1;
 }
 
 .session-id {
@@ -471,5 +627,19 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Стили для диалога сводки */
+:deep(.summary-dialog) {
+  width: 600px;
+  max-width: 90vw;
+  background-color: var(--forte-bg-primary);
+}
+
+:deep(.summary-dialog .el-message-box__message) {
+  max-height: 70vh;
+  overflow-y: auto;
+  background-color: var(--forte-bg-primary);
+
 }
 </style>
