@@ -1,0 +1,27 @@
+{
+  "name": "ai-business-analyst",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@vueuse/core": "^10.7.0",
+    "axios": "^1.13.2",
+    "dayjs": "^1.11.10",
+    "docx": "^8.5.0",
+    "element-plus": "^2.5.0",
+    "file-saver": "^2.0.5",
+    "jspdf": "^2.5.0",
+    "pinia": "^2.1.0",
+    "vue": "^3.4.0",
+    "vue-mermaid-string": "^7.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "vite": "^5.0.0"
+  }
+}

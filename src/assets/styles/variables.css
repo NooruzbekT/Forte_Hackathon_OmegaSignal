@@ -1,0 +1,71 @@
+:root {
+  --forte-primary: #61cfff;
+  --forte-primary-dark: #008C44;
+  --forte-primary-light: #043263;
+  --forte-primary-lighter: #043263;
+  
+  --forte-gradient: linear-gradient(135deg, #00A651 0%, #33B870 100%);
+  
+  --forte-accent-orange: #4a0221;
+  
+  --forte-text-primary: #fff;
+  --forte-text-secondary: #fff;
+  --forte-text-disabled: #BEBEBE;
+  
+  --forte-bg-primary: #4a0221;
+  --forte-bg-secondary: #A31551;
+  --forte-bg-tertiary: #A31551;
+  
+  --forte-border-light: #2d1620;
+  --forte-border-medium: #1464a5;
+  --forte-border-dark: #043263;
+  
+  --forte-success: #1464a5;
+  --forte-success-light: #E8F5ED;
+  --forte-warning: #FF9800;
+  --forte-warning-light: #FFF3E0;
+  --forte-error: #F44336;
+  --forte-error-light: #FFEBEE;
+  --forte-info: #2196F3;
+  --forte-info-light: #E3F2FD;
+  
+  --forte-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+  
+  --forte-text-xs: 12px;
+  --forte-text-sm: 14px;
+  --forte-text-base: 16px;
+  --forte-text-lg: 18px;
+  --forte-text-xl: 20px;
+  --forte-text-2xl: 24px;
+  --forte-text-3xl: 30px;
+  
+  --forte-font-regular: 400;
+  --forte-font-medium: 500;
+  --forte-font-semibold: 600;
+  --forte-font-bold: 700;
+  
+  --forte-space-1: 4px;
+  --forte-space-2: 8px;
+  --forte-space-3: 12px;
+  --forte-space-4: 16px;
+  --forte-space-5: 20px;
+  --forte-space-6: 24px;
+  --forte-space-8: 32px;
+  --forte-space-10: 40px;
+  --forte-space-12: 48px;
+  
+  --forte-radius-sm: 4px;
+  --forte-radius-md: 8px;
+  --forte-radius-lg: 12px;
+  --forte-radius-xl: 16px;
+  --forte-radius-full: 9999px;
+  
+  --forte-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --forte-shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.08);
+  --forte-shadow-lg: 0 4px 12px 0 rgba(0, 0, 0, 0.12);
+  --forte-shadow-xl: 0 8px 24px 0 rgba(0, 0, 0, 0.15);
+  
+  --forte-transition-fast: 150ms ease-in-out;
+  --forte-transition-base: 250ms ease-in-out;
+  --forte-transition-slow: 350ms ease-in-out;
+}

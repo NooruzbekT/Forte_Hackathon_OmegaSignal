@@ -1,0 +1,77 @@
+/* main.css */
+@import './variables.css';
+
+/* 1. Прокидываем твою тему в токены Element Plus */
+:root {
+  /* Шрифт и размеры */
+  --el-font-family: var(--forte-font-family);
+  --el-font-size-base: var(--forte-text-base);
+
+  /* Цвета текста */
+  --el-text-color-primary: var(--forte-text-primary);
+  --el-text-color-regular: var(--forte-text-secondary);
+
+  /* Фоны */
+  --el-bg-color-page: var(--forte-bg-primary);
+  --el-bg-color: var(--forte-bg-primary);
+
+  /* Основной брендовый цвет */
+  --el-color-primary: var(--forte-primary);
+  --el-color-primary-light-3: var(--forte-primary-light);
+  --el-color-primary-light-9: var(--forte-primary-lighter);
+
+  /* Бордеры */
+  --el-border-color: var(--forte-border-medium);
+  --el-border-color-light: var(--forte-border-light);
+}
+
+/* 2. Глобальный reset */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 3. Базовая разметка */
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  font-family: var(--forte-font-family), var(--el-font-family);
+  font-size: var(--forte-text-base);
+  color: var(--forte-text-secondary);
+  background: var(--forte-bg-primary);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+}
+
+/* 4. Скроллбары */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--forte-border-medium);
+  border-radius: var(--forte-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--forte-border-dark);
+}
